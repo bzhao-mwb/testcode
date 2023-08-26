@@ -1,10 +1,9 @@
 SELECT
-        s.cds_history_insert_ts::date as snapshot_date
-        ,a.id AS SF_ACCOUNT_ID
+        a.id AS SF_ACCOUNT_ID
         ,a.NAME as sf_account_name
         ,a.SALES_REGION
         ,a.BILLINGCOUNTRY
-        ,a.MSPBILLINGTYPE
+        ,coalesce(c.mspbillingtype,a.MSPBILLINGTYPE) as MSPBILLINGTYPE
         ,a.type
         ,a.partner_type
         ,a.test_account
@@ -14,8 +13,9 @@ SELECT
         ,nullif(a.TWOTIER_CURRENTMASTERMSP,'') AS master_msp_account_id
         ,ma.NAME AS master_msp_account_name
         ,coalesce(a.MASTER_MSP,false) AS parent_msp_is_master_msp
-        --,IFF((u2.TITLE LIKE '%MSP Channel Account Manager%' OR u2."NAME" = 'Alejandro Hage'), u2."NAME", '') AS CAM
-        --,IFNULL(u3.NAME, '') AS PSM
+        ,IFF((u2.TITLE LIKE '%MSP Channel Account Manager%' OR u2."NAME" = 'Alejandro Hage'), u2."NAME", '') AS CAM
+        ,IFNULL(u3.NAME, '') AS PSM
+         ,nullif(u4.name,'') as am
         --,c.id AS contract_id
         --,c.NAME AS contract_name
         --,c.status AS contract_status
@@ -24,26 +24,28 @@ SELECT
         --,s.id AS subscription_id
         --,s.NAME AS subscription_name
         --,s.sku AS subscription_sku
-        ,sum(s.quantity) AS seats_purchased
-        FROM CDS.MWB_SF_SUBSCRIPTIONS_PLUS_CDS_HISTORY s
-      INNER JOIN dm_sales.SF_CONTRACT_CDS_history c ON s.contract_id =c.id and s.cds_history_insert_ts::date=c.cds_history_insert_ts::date
-      INNER JOIN dm_sales.SF_ACCOUNT_CDS_history a ON c.ACCOUNTID =a.id AND a.TEST_ACCOUNT =FALSE and a.cds_history_insert_ts::date=c.cds_history_insert_ts::date
+        ,sum(s.SBQQ__QUANTITY) AS seats_purchased
+        FROM dm_sales.SF_SUBSCRIPTION_CDS s
+      INNER JOIN dm_sales.SF_CONTRACT_CDS c ON s.SBQQONTRACT =c.id
+      INNER JOIN dm_sales.SF_ACCOUNT_CDS a ON c.ACCOUNTID =a.id --AND a.TEST_ACCOUNT =false
       --LEFT JOIN dm_sales.SF_CONTACT_CDS cc ON cc.ACCOUNTID =a.id
-      LEFT JOIN dm_sales.SF_ACCOUNT_CDS_history ma ON ma.id=nullif(a.TWOTIER_CURRENTMASTERMSP,'') and ma.cds_history_insert_ts::date=c.cds_history_insert_ts::date
-      --LEFT JOIN DM_SALES.SF_USER_CDS_history u2 ON u2.id = a.OWNERID and s.cds_history_insert_ts::date=u2.cds_history_insert_ts::date
-      --LEFT JOIN DM_SALES.SF_USER_CDS_history u3 ON u3.id = a.PARTNER_CONSULTANT and s.cds_history_insert_ts::date=u3.cds_history_insert_ts::date
+      LEFT JOIN dm_sales.SF_ACCOUNT_CDS ma ON ma.id=nullif(a.TWOTIER_CURRENTMASTERMSP,'')
+      LEFT JOIN DM_SALES.SF_USER_CDS u2 ON u2.id = a.OWNERID
+      LEFT JOIN DM_SALES.SF_USER_CDS u3 ON u3.id = a.PARTNER_CONSULTANT
+      left join DM_SALES.SF_USER_CDS u4 ON u4.id = a.OWNERID
+      left join (SELECT DISTINCT sf_sku ,category,is_site_license_sku,Is_crowdstrike_sku  FROM cds.UD_NEBULIFT_MAPPING_CDS) n on s.sku = n.sf_sku
       where
       {% condition contract_status %} c.status {% endcondition %}
       and {% condition sku %} s.sku {% endcondition %}
-      and {% condition snapshot_timeframe %} s.cds_history_insert_ts::date {% endcondition %}
-      AND {% condition msp_billing_type_hybrid %} coalesce(NULLIF(c.mspbillingtype,''),a.mspbillingtype) {% endcondition %} --add logic to deal with Upfront Hybrid contracts
+      and {% condition sku_category %} n.category {% endcondition %}
+      and {% condition is_site_license_sku %} n.is_site_license_sku {% endcondition %}
+      and {% condition Is_crowdstrike_sku %} n.Is_crowdstrike_sku {% endcondition %}
       group by
-        s.cds_history_insert_ts::date
-        ,a.id
+        a.id
         ,a.NAME
         ,a.SALES_REGION
         ,a.BILLINGCOUNTRY
-        ,a.MSPBILLINGTYPE
+        ,coalesce(c.mspbillingtype,a.MSPBILLINGTYPE)
         ,a.type
         ,a.partner_type
         ,a.test_account
@@ -51,6 +53,7 @@ SELECT
         ,nullif(a.TWOTIER_CURRENTMASTERMSP,'')
         ,ma.NAME
         ,coalesce(a.MASTER_MSP,false)
-        --,IFF((u2.TITLE LIKE '%MSP Channel Account Manager%' OR u2."NAME" = 'Alejandro Hage'), u2."NAME", '')
-        --,IFNULL(u3.NAME, '')
+        ,IFF((u2.TITLE LIKE '%MSP Channel Account Manager%' OR u2."NAME" = 'Alejandro Hage'), u2."NAME", '')
+        ,IFNULL(u3.NAME, '')
+        ,nullif(u4.name,'')
 ;
